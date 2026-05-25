@@ -39,3 +39,68 @@ PORT=3000
 [ELASTICSEARCH]
 # URL de conexão com o banco de dados
 NODE=http://localhost:9200
+```
+
+---
+
+## 💻 Como rodar o projeto localmente (Desenvolvimento)
+1. Suba o banco de dados:
+Certifique-se de ter o Docker instalado e inicie o Elasticsearch e o Kibana em segundo plano:
+
+```Bash
+docker-compose up -d
+```
+2. Instale as dependências da API:
+
+```Bash
+npm install
+```
+3. Inicie o microserviço:
+
+```Bash
+node src/server.js
+```
+Ou Gere um executável
+```Bash
+npm run build
+```
+
+## 📡 Exemplo de Uso (API)
+Endpoint: POST /api/InsereLogs
+
+Exemplo de Payload (JSON):
+
+```JSON
+{
+  "Datahora": "07/01/2026 15:00:43.200",
+  "Tipo": 1,
+  "TipoPrograma": "Ema_ERP",
+  "Porta": 0,
+  "Conteudo": {
+    "Observacao": "Erro ao abrir ERP",
+    "Descricao": "Erro no abrir do sistema",
+    "Origem": 2,
+    "IdIntegracaoEcommerce": 0
+  },
+  "TipoLog": "ERRO"
+}
+Retorno de Sucesso (201 Created):
+```
+
+```JSON
+{
+  "message": "Log gravado com sucesso!",
+  "id": "59EBYZ4BZUZarLvIs9O7"
+}
+```
+
+## 🛣️ Próximos Passos (Roadmap)
+[x] Criação da API de ingestão em Node.js.
+
+[x] Integração com Elasticsearch para indexação dinâmica.
+
+[x] Parametrização via arquivo LogsConfig.ini.
+
+[x] Compilação do projeto Node.js em um arquivo executável (.exe) para implantação on-premise.
+
+[ ] Criação de painéis (Dashboards) padronizados no Kibana.
