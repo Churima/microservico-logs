@@ -1,11 +1,10 @@
 const { Client } = require('@elastic/elasticsearch');
-require('dotenv').config();
+const config = require('./loadConfig');
 
 const client = new Client({
-  node: process.env.ELASTIC_NODE
+  node: config.ELASTICSEARCH.NODE
 });
 
-// Testa a conexão ao iniciar
 client.ping()
   .then(() => console.log('Conectado ao Elasticsearch com sucesso!'))
   .catch(err => console.error('Erro ao conectar no Elasticsearch:', err));

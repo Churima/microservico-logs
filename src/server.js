@@ -1,6 +1,6 @@
-require('dotenv').config();
 const express = require('express');
 const logRoutes = require('./routes/logRoutes');
+const config = require('./config/loadConfig'); // Importa o leitor do .ini
 
 const app = express();
 
@@ -10,8 +10,8 @@ app.use(express.json());
 // Registra as rotas
 app.use('/api', logRoutes);
 
-// Pega a porta do arquivo .env ou usa a 8080 como fallback
-const PORT = process.env.PORT || 8080;
+// Pega a porta da seção [SERVER] do arquivo .ini
+const PORT = config.SERVER.PORT || 8080;
 
 app.listen(PORT, () => {
   console.log(`Microserviço rodando na porta ${PORT}`);

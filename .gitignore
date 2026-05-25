@@ -8,6 +8,7 @@ yarn-error.log*
 
 # Variáveis de ambiente
 .env
+LogsConfig.ini
 
 # Ambientes Virtuais
 venv/
