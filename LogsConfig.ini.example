@@ -3,3 +3,4 @@ PORT=3000
 
 [ELASTICSEARCH]
 NODE=http://localhost:9200
+INDEX=meus-logs-app
