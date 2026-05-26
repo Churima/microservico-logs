@@ -120,6 +120,10 @@ exports.consultarLogs = async (req, res) => {
 
     const limiteResultados = size ? parseInt(size, 10) : 100;
 
+    if (limiteResultados > 10000) {
+      limiteResultados = 10000;
+    }
+    
     // Busca usando o índice do .ini (colocamos o * no final para buscar qualquer variação de data se houver)
     const resultado = await client.search({
       index: `${NOME_INDICE}*`, 
