@@ -1,31 +1,142 @@
-const elasticClient = require('../config/elastic');
+const client = require('../config/elastic'); // Importa a conexão com o banco
+const config = require('../config/loadConfig'); // Importa o leitor do .ini
 
-exports.createLog = async (req, res) => {
+// Pega o nome do índice do .ini (se não achar, usa um padrão por segurança)
+const NOME_INDICE = config.ELASTICSEARCH.INDEX || 'meus-logs-app';
+
+exports.inserirLog = async (req, res) => {
   try {
     const logData = req.body;
 
-    // Se o JSON estiver vazio, retorna erro
-    if (!logData || Object.keys(logData).length === 0) {
-      return res.status(400).json({ error: 'O corpo da requisição não pode estar vazio.' });
+    if (!logData.timestamp) {
+      logData.timestamp = new Date().toISOString();
     }
 
-    // Grava no Elasticsearch
-    // 'index' é o nome da "tabela" onde os dados ficarão salvos
-    const result = await elasticClient.index({
-      index: 'meus-logs-app',
-      document: {
-        timestamp: new Date(), // Adiciona a data/hora automaticamente
-        ...logData            // Espalha todas as chaves do seu JSON dinamicamente
-      }
+    // Grava usando o nome do índice que veio do .ini
+    const resultado = await client.index({
+      index: NOME_INDICE,
+      document: logData
     });
 
     return res.status(201).json({
-      message: 'Log gravado com sucesso!',
-      id: result._id
+      message: "Log gravado com sucesso!",
+      id: resultado._id
     });
 
-  } catch (error) {
-    console.error('Erro ao gravar log:', error);
-    return res.status(500).json({ error: 'Erro interno no servidor ao gravar o log.' });
+  } catch (erro) {
+    console.error('Erro ao inserir log:', erro);
+    return res.status(500).json({ error: 'Erro ao gravar no banco de dados' });
+  }
+};
+
+exports.consultarLogs = async (req, res) => {
+  try {
+    const { 
+      tipoLog, 
+      tipoPrograma, 
+      idintegracaoEcommerce, 
+      observacao, 
+      descricao, 
+      termo, 
+      dataInicio, 
+      dataFim,
+      size
+    } = req.query;
+
+    let queryElastic = {
+      bool: {
+        must: []
+      }
+    };
+
+    if (tipoLog) {
+      queryElastic.bool.must.push({
+        query_string: { 
+          default_field: "TipoLog", 
+          query: `*${tipoLog}*` 
+        }
+      });
+    }
+
+    if (tipoPrograma) {
+      queryElastic.bool.must.push({
+        query_string: { 
+          default_field: "TipoPrograma", 
+          query: `*${tipoPrograma}*` 
+        }
+      });
+    }
+
+    if (idintegracaoEcommerce) {
+      queryElastic.bool.must.push({
+        query_string: { 
+          default_field: "Conteudo.IdIntegracaoEcommerce", 
+          query: `*${idintegracaoEcommerce}*` 
+        }
+      });
+    }
+
+    if (observacao) {
+      queryElastic.bool.must.push({
+        query_string: { 
+          default_field: "Conteudo.Observacao", 
+          query: `*${observacao}*` 
+        }
+      });
+    }
+
+    if (descricao) {
+      queryElastic.bool.must.push({
+        query_string: { 
+          default_field: "Conteudo.Descricao", 
+          query: `*${descricao}*` 
+        }
+      });
+    }
+
+    if (termo) {
+      queryElastic.bool.must.push({
+        query_string: { query: `*${termo}*` }
+      });
+    }
+
+    if (dataInicio || dataFim) {
+      let filtroData = {
+        range: {
+          "timestamp": {} 
+        }
+      };
+
+      if (dataInicio) {
+        filtroData.range.timestamp.gte = dataInicio;
+      }
+      
+      if (dataFim) {
+        filtroData.range.timestamp.lte = dataFim;
+      }
+
+      queryElastic.bool.must.push(filtroData);
+    }
+
+    const limiteResultados = size ? parseInt(size, 10) : 100;
+
+    // Busca usando o índice do .ini (colocamos o * no final para buscar qualquer variação de data se houver)
+    const resultado = await client.search({
+      index: `${NOME_INDICE}*`, 
+      size: limiteResultados, 
+      query: queryElastic,
+      sort: [ { "timestamp": { order: "desc" } } ]
+    });
+
+    const logsEncontrados = resultado.hits.hits.map(hit => hit._source);
+
+    return res.status(200).json({
+      total: resultado.hits.total.value,
+      logs: logsEncontrados
+    });
+
+  } catch (erro) {
+    console.error('Erro ao consultar logs:', erro);
+    return res.status(500).json({ error: 'Erro ao buscar dados no Elasticsearch' });
   }
 };
