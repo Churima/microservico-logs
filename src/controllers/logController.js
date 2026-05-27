@@ -40,7 +40,8 @@ exports.consultarLogs = async (req, res) => {
       termo, 
       dataInicio, 
       dataFim,
-      size
+      size,
+      ultimoTimestamp 
     } = req.query;
 
     let queryElastic = {
@@ -118,25 +119,44 @@ exports.consultarLogs = async (req, res) => {
       queryElastic.bool.must.push(filtroData);
     }
 
-    const limiteResultados = size ? parseInt(size, 10) : 100;
+    let limiteResultados = size ? parseInt(size, 10) : 100;
 
+    // Trava de segurança para não quebrar a janela padrão de 10k do Elasticsearch
     if (limiteResultados > 10000) {
       limiteResultados = 10000;
     }
     
-    // Busca usando o índice do .ini (colocamos o * no final para buscar qualquer variação de data se houver)
-    const resultado = await client.search({
+    // Monta a estrutura da chamada
+    let opcoesBusca = {
       index: `${NOME_INDICE}*`, 
       size: limiteResultados, 
       query: queryElastic,
-      sort: [ { "timestamp": { order: "desc" } } ]
-    });
+      sort: [ { "timestamp": { order: "desc" } } ] // Ordenado por timestamp decrescente
+    };
 
+    if (ultimoTimestamp) {
+      opcoesBusca.search_after = [ultimoTimestamp];
+    }
+
+    // Executa a busca no banco NoSQL
+    const resultado = await client.search(opcoesBusca);
+
+    // Mapeia o array com as informações dos logs (_source)
     const logsEncontrados = resultado.hits.hits.map(hit => hit._source);
 
+    // Lógica para descobrir o marcador da próxima página:
+    // Ele pega o valor do campo de ordenação (sort) do último registro retornado nesta listagem
+    let proximoMarcador = null;
+    if (resultado.hits.hits.length > 0) {
+      const ultimoHit = resultado.hits.hits[resultado.hits.hits.length - 1];
+      proximoMarcador = ultimoHit.sort[0]; 
+    }
+
+    // Retorna o pacote pronto com os logs e a indicação de paginação
     return res.status(200).json({
-      total: resultado.hits.total.value,
-      logs: logsEncontrados
+      total: resultado.hits.total.value, 
+      logs: logsEncontrados,             
+      proximaPagina: proximoMarcador     
     });
 
   } catch (erro) {
