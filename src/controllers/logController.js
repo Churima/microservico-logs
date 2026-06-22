@@ -1,5 +1,6 @@
 const client = require('../config/elastic'); // Importa a conexão com o banco
 const config = require('../config/loadConfig'); // Importa o leitor do .ini
+const crypto = require('crypto');
 
 // Pega o nome do índice do .ini (se não achar, usa um padrão por segurança)
 const NOME_INDICE = config.ELASTICSEARCH.INDEX || 'meus-logs-app';
@@ -11,6 +12,9 @@ exports.inserirLog = async (req, res) => {
     if (!logData.timestamp) {
       logData.timestamp = new Date().toISOString();
     }
+
+    // Gera um ID único para o registro
+    logData.id_unico_log = crypto.randomUUID();  
 
     // Grava usando o nome do índice que veio do .ini
     const resultado = await client.index({
@@ -32,16 +36,13 @@ exports.inserirLog = async (req, res) => {
 exports.consultarLogs = async (req, res) => {
   try {
     const { 
-      tipoLog, 
-      tipoPrograma, 
-      idintegracaoEcommerce, 
-      observacao, 
-      descricao, 
       termo, 
       dataInicio, 
       dataFim,
       size,
-      ultimoTimestamp 
+      ultimoTimestamp,     
+      ultimoIdUnico,      
+      ...filtrosDinamicos // Para filtrar de forma dinamica o nome das colunas
     } = req.query;
 
     let queryElastic = {
@@ -50,49 +51,15 @@ exports.consultarLogs = async (req, res) => {
       }
     };
 
-    if (tipoLog) {
-      queryElastic.bool.must.push({
-        query_string: { 
-          default_field: "TipoLog", 
-          query: `*${tipoLog}*` 
-        }
-      });
-    }
-
-    if (tipoPrograma) {
-      queryElastic.bool.must.push({
-        query_string: { 
-          default_field: "TipoPrograma", 
-          query: `*${tipoPrograma}*` 
-        }
-      });
-    }
-
-    if (idintegracaoEcommerce) {
-      queryElastic.bool.must.push({
-        query_string: { 
-          default_field: "Conteudo.IdIntegracaoEcommerce", 
-          query: `*${idintegracaoEcommerce}*` 
-        }
-      });
-    }
-
-    if (observacao) {
-      queryElastic.bool.must.push({
-        query_string: { 
-          default_field: "Conteudo.Observacao", 
-          query: `*${observacao}*` 
-        }
-      });
-    }
-
-    if (descricao) {
-      queryElastic.bool.must.push({
-        query_string: { 
-          default_field: "Conteudo.Descricao", 
-          query: `*${descricao}*` 
-        }
-      });
+    for (const coluna in filtrosDinamicos) {
+      if (filtrosDinamicos[coluna]) {
+        queryElastic.bool.must.push({
+          query_string: { 
+            default_field: coluna, // Pesquisa no nome exato da coluna enviada
+            query: `*${filtrosDinamicos[coluna]}*` 
+          }
+        });
+      }
     }
 
     if (termo) {
@@ -102,20 +69,9 @@ exports.consultarLogs = async (req, res) => {
     }
 
     if (dataInicio || dataFim) {
-      let filtroData = {
-        range: {
-          "timestamp": {} 
-        }
-      };
-
-      if (dataInicio) {
-        filtroData.range.timestamp.gte = dataInicio;
-      }
-      
-      if (dataFim) {
-        filtroData.range.timestamp.lte = dataFim;
-      }
-
+      let filtroData = { range: { "timestamp": {} } };
+      if (dataInicio) filtroData.range.timestamp.gte = dataInicio;
+      if (dataFim) filtroData.range.timestamp.lte = dataFim;
       queryElastic.bool.must.push(filtroData);
     }
 
@@ -131,11 +87,14 @@ exports.consultarLogs = async (req, res) => {
       index: `${NOME_INDICE}*`, 
       size: limiteResultados, 
       query: queryElastic,
-      sort: [ { "timestamp": { order: "desc" } } ] // Ordenado por timestamp decrescente
+      sort: [ 
+        { "timestamp": { order: "desc" } },
+        { "id_unico_log.keyword": { order: "desc" } } // Campo otimizado que nós mesmos criamos
+      ] 
     };
 
-    if (ultimoTimestamp) {
-      opcoesBusca.search_after = [ultimoTimestamp];
+    if (ultimoTimestamp && ultimoIdUnico) {
+      opcoesBusca.search_after = [ultimoTimestamp, ultimoIdUnico];
     }
 
     // Executa a busca no banco NoSQL
@@ -145,18 +104,23 @@ exports.consultarLogs = async (req, res) => {
     const logsEncontrados = resultado.hits.hits.map(hit => hit._source);
 
     // Lógica para descobrir o marcador da próxima página:
-    // Ele pega o valor do campo de ordenação (sort) do último registro retornado nesta listagem
-    let proximoMarcador = null;
+    let proximoTimestamp = null;
+    let proximoIdUnico = null;
+    
     if (resultado.hits.hits.length > 0) {
       const ultimoHit = resultado.hits.hits[resultado.hits.hits.length - 1];
-      proximoMarcador = ultimoHit.sort[0]; 
+      proximoTimestamp = ultimoHit.sort[0]; 
+      proximoIdUnico = ultimoHit.sort[1];
     }
 
     // Retorna o pacote pronto com os logs e a indicação de paginação
     return res.status(200).json({
       total: resultado.hits.total.value, 
       logs: logsEncontrados,             
-      proximaPagina: proximoMarcador     
+      proximaPagina: proximoTimestamp ? {
+        ultimoTimestamp: proximoTimestamp,
+        ultimoIdUnico: proximoIdUnico
+      } : null 
     });
 
   } catch (erro) {
