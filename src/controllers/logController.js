@@ -52,13 +52,21 @@ exports.consultarLogs = async (req, res) => {
     };
 
     for (const coluna in filtrosDinamicos) {
-      if (filtrosDinamicos[coluna]) {
-        queryElastic.bool.must.push({
-          query_string: { 
-            default_field: coluna, // Pesquisa no nome exato da coluna enviada
-            query: `*${filtrosDinamicos[coluna]}*` 
-          }
-        });
+      const valor = filtrosDinamicos[coluna];
+      if (valor) {
+        const ehNumero = /^-?\d+(\.\d+)?$/.test(valor);
+        if (ehNumero) {
+          queryElastic.bool.must.push({
+            match: { [coluna]: valor }
+          });
+        } else {
+          queryElastic.bool.must.push({
+            query_string: { 
+              default_field: coluna, 
+              query: `*${valor}*` 
+            }
+          });
+        }
       }
     }
 
@@ -94,7 +102,8 @@ exports.consultarLogs = async (req, res) => {
     };
 
     if (ultimoTimestamp && ultimoIdUnico) {
-      opcoesBusca.search_after = [ultimoTimestamp, ultimoIdUnico];
+      const timestampNumerico = Number(ultimoTimestamp);
+      opcoesBusca.search_after = [timestampNumerico, ultimoIdUnico];
     }
 
     // Executa a busca no banco NoSQL
